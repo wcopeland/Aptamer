@@ -1,5 +1,5 @@
 __author__ = 'Wilbert'
-__version__ = 0.2.1
+__version__ = 0.2
 
 from libApt import *
 import matplotlib.pyplot as mplot
