@@ -7,7 +7,6 @@ import random
 
 
 """ Create system model """
-
 systemOfEquations = """
 $dyeExt -> dye; kt * dyeExt
 dye -> dyeExt; kt * dye
@@ -34,13 +33,33 @@ expt = Experiment()
 expt.ImportData("June6\\yaml.txt", default_antimony=systemOfEquations, default_model_values=defaultValues)
 
 ''' PLOT ALL EXPERIMENTAL DATA '''
+# 5uM Malachite Green & ~0.35 dilution rate
 mplot.figure()
 for k,v in expt.samples.items():
-    mplot.plot(v.measurement[:,0], v.measurement[:,1], 'o')
+    if v.metadata["dye_external"] == '5uM' and v.metadata["dilution_rate"] > 0.31:
+        label_data = '{0} ({1} hr-1, {2} MG)'.format(v.metadata["strain"], v.metadata["dilution_rate"], v.metadata["dye_external"])
+        mplot.plot(v.measurement[:,0], v.measurement[:,1], 'o', label=label_data)
+mplot.xlabel("Time (seconds)")
+mplot.ylabel("MGA5S Fluorescence (RFUs)")
+mplot.legend(loc='upper left')
 mplot.show()
 
+# 5uM Malachite Green & ~0.25 dilution rate
+mplot.figure()
+for k,v in expt.samples.items():
+    if v.metadata["dye_external"] == '5uM' and v.metadata["dilution_rate"] < 0.31:
+        label_data = '{0} ({1} hr-1, {2} MG)'.format(v.metadata["strain"], v.metadata["dilution_rate"], v.metadata["dye_external"])
+        mplot.plot(v.measurement[:,0], v.measurement[:,1], 'o', label=label_data)
+mplot.xlabel("Time (seconds)")
+mplot.ylabel("MGA5S Fluorescence (RFUs)")
+mplot.legend(loc='upper left')
+mplot.show()
+
+
 ''' SPECIFY SHARED PARAMETERS BETWEEN SAMPLE MODELS '''
-linkedParamList = [ ['*.ci'],
+linkedParamList = [ ['!dye_external=5uM.ci'],
+                    ['!dye_external=3uM.ci'],
+                    ['!dye_external=2uM.ci'],
                     ['!strain=J23100.syn'],
                     ['!strain=J23101.syn'],
                     ['!strain=J23104.syn'],
@@ -48,7 +67,8 @@ linkedParamList = [ ['*.ci'],
                     ['!strain=J23110.syn'],
                     ['!strain=J23111.syn'],
                     ['*.kf'],
-                    ['*.kr'], ]
+                    ['*.kr'],
+                    ['*.kt']]
 expt.CreateParameterMap(linked_parameters=linkedParamList)
 
 

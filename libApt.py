@@ -139,7 +139,7 @@ class Experiment(object):
                     sample = Sample(model=m)
                     sample.metadata["strain"] = name
                     if(meta.get("dilution_rate") is not None):
-                        sample.metadata["dilution_rate"] = meta["dilution_rate"]
+                        sample.metadata["dilution_rate"] = float(meta["dilution_rate"])
                         # <CAREFUL!> Dilution Rate is converted from hr^-1 to min^-1 in the following line.
                         sample.model.SetValue("dil", float(sample.metadata["dilution_rate"])/60.)
                         sample.model.LockParameters("dil")
