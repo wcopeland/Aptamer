@@ -1,0 +1,154 @@
+Measurement1:
+  filename: June6\M1.txt
+  time_offset: 15
+  exposure_after: 18
+  read_progression: 1,2,3,4,5,6,7,8,9,10,11
+  samples:
+    NAC: 
+      dilution_rate: 0.354
+      dye_external: 5uM
+      columns: 10,11
+    J23107:
+      dilution_rate: 0.230
+      columns: 1,2,3
+      dye_external: 5uM
+    J23100:
+      dilution_rate: 0.225
+      columns: 4,5,6
+      dye_external: 5uM
+    J23101:
+      dilution_rate: 0.253
+      columns: 7,8,9
+      dye_external: 5uM
+Measurement2:
+  filename: June6\M2.txt
+  time_offset: 14
+  exposure_after: 17
+  read_progression: 1,2,3,4,5,6,7,8,9,10,11
+  samples:
+    NAC:
+      dilution_rate: 0.354
+      dye_external: 5uM
+      columns: 10,11
+    J23104:
+      dilution_rate: 0.234
+      columns: 1,2,3
+      dye_external: 5uM
+    J23111:
+      dilution_rate: 0.243
+      columns: 4,5,6
+      dye_external: 5uM
+    J23101:
+      dilution_rate: 0.253
+      columns: 7,8,9
+      dye_external: 5uM
+Measurement3:
+  filename: June6\M3.txt
+  time_offset: 15
+  exposure_after: 13
+  read_progression: 1,2,3,4,5,6,7,8,9,10,11
+  samples:
+    NAC:
+      dilution_rate: 0.354
+      dye_external: 5uM
+      columns: 10,11
+    J23104:
+      dilution_rate: 0.325
+      columns: 1,2,3
+      dye_external: 5uM
+    J23111a:
+      dilution_rate: 0.321
+      columns: 4,5,6
+      dye_external: 5uM
+    J23110:
+      dilution_rate: 0.355
+      columns: 7,8,9
+      dye_external: 5uM
+Measurement4:
+  filename: June6\M4.txt
+  time_offset: 14
+  exposure_after: 12
+  read_progression: 1,2,3,4,5,6,7,8,9,10,11
+  samples:
+    NAC:
+      dilution_rate: 0.354
+      dye_external: 5uM
+      columns: 10,11
+    J23100:
+      dilution_rate: 0.363
+      columns: 1,2,3
+      dye_external: 5uM
+    J23101:
+      dilution_rate: 0.356
+      columns: 4,5,6
+      dye_external: 5uM
+    J23107:
+      dilution_rate: 0.351
+      columns: 7,8,9
+      dye_external: 5uM
+Measurement5:
+  filename: June6\M5.txt
+  time_offset: 14
+  exposure_after: 17
+  read_progression: 1,2,3,4,5,6,7,8,9,10,11
+  samples:
+    NAC:
+      dilution_rate: 0.354
+      dye_external: 5uM
+      columns: 10,11
+    J23101:
+      dilution_rate: 0.253
+      columns: 1,2,3
+      dye_external: 5uM
+    J23111a:
+      dilution_rate: 0.321
+      columns: 4,5,6
+      dye_external: 5uM
+    J23101:
+      dilution_rate: 0.356
+      columns: 7,8,9
+      dye_external: 5uM
+Measurement6:
+  filename: June6\M6.txt
+  time_offset: 16
+  exposure_after: 16
+  read_progression: 1,2,3,4,5,6,7,8,9,10,11
+  samples:
+    NAC:
+      dilution_rate: 0.354
+      dye_external: 3uM
+      columns: 10,11
+    J23101:
+      dilution_rate: 0.253
+      columns: 1,2,3
+      dye_external: 3uM
+    J23111:
+      dilution_rate: 0.321
+      columns: 4,5,6
+      dye_external: 3uM
+    J23101:
+      dilution_rate: 0.356
+      columns: 7,8,9
+      dye_external: 3uM
+Measurement7:
+  filename: June6\M7.txt
+  time_offset: 13
+  exposure_after: 15
+  read_progression: 1,2,3,4,5,6,7,8,9,10,11
+  samples:
+    NAC:
+      dilution_rate: 0.354
+      dye_external: 2uM
+      columns: 10,11
+    J23101:
+      dilution_rate: 0.253
+      columns: 1,2,3
+      dye_external: 2uM
+    J23111:
+      dilution_rate: 0.321
+      columns: 4,5,6
+      dye_external: 2uM
+    J23101:
+      dilution_rate: 0.356
+      columns: 7,8,9
+      dye_external: 2uM
