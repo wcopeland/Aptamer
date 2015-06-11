@@ -1,6 +1,8 @@
 __author__ = 'Wilbert'
 
+import math
 import numpy as np
+import random
 import re
 import tellurium as te
 import yaml
@@ -135,9 +137,9 @@ class Experiment(object):
                     sample_data.insert(t0_index, (0.,t0_data_estimate))
 
                     # Create and store sample.
-                    m = Model(antimony=default_antimony, default_values=default_model_values)
-                    sample = Sample(model=m)
-                    sample.metadata["strain"] = name
+                    new_model = Model(antimony=default_antimony, default_values=default_model_values)
+                    sample = Sample(model=new_model)
+                    sample.metadata["strain"] = re.match('(\w+)(\.\d+)*', name).group(1) #name
                     if(meta.get("dilution_rate") is not None):
                         sample.metadata["dilution_rate"] = float(meta["dilution_rate"])
                         # <CAREFUL!> Dilution Rate is converted from hr^-1 to min^-1 in the following line.
@@ -174,9 +176,6 @@ class Experiment(object):
         assert len(self.optimization_vector) == (max([x for x in self.parameter_map.values()]) + 1), "ERROR. Parameter Map and Optimization Vector have incompatible dimensions."
         for key in self.parameter_map:
             self.SetOptVecParameter(key)
-            #val = self.optimization_vector[self.parameter_map[key]]
-            #sampleName, paramName = key.split('.')
-            #self.samples[sampleName].model.SetValue(paramName, val)
         return
 
     def CreateParameterMap(self, linked_parameters=None):
@@ -225,3 +224,86 @@ class Experiment(object):
     def GetNumberUniqueParametersInMap(self):
         return len(set(self.parameter_map.values()))
 
+
+class DEOpt(object):
+    def __init__(self, experiment, min_max=None):
+        self.Islands = []
+        self.experiment = experiment
+        vector_length = experiment.GetNumberUniqueParametersInMap()
+        self.min_max = min_max if min_max is not None else np.array([[0., 5.e1] for x in range(vector_length)])
+        return
+
+    def CreateIsland(self, population_size):
+        island = []
+        for i in range(population_size):
+            island.append(self.CreateRandomMember())
+        self.Islands.append(island)
+        return
+
+    def CreateRandomMember(self):
+        vector_length = self.experiment.GetNumberUniqueParametersInMap()
+        vector = [round(random.uniform(*self.min_max[x,:]),6) for x in range(vector_length)]
+        fitness = self.GetFitness(vector)
+        print("RandomMember\tFitness: {0}\tVector: {1}".format(fitness, vector))
+        return Member(vector, fitness)
+
+    def CreateTrialMember(self, original, samples, CR=0.6, F=0.8):
+        o = original.Vector
+        a = samples[0].Vector
+        b = samples[1].Vector
+        c = samples[2].Vector
+
+        new_vector = []
+        for i in range(len(o)):
+            if random.random() <= CR:
+                v = round(a[i] + F * (b[i] - c[i]), 7)
+                if v>0:
+                    new_vector.append(v)
+                else:
+                    new_vector.append(o[i]/2.)
+            else:
+                new_vector.append(o[i])
+        new_fitness = self.GetFitness(new_vector)
+        return Member(new_vector, new_fitness)
+
+    def GetFitness(self, vector):
+        # Update model based on vector.
+        self.experiment.optimization_vector = vector
+        self.experiment.UpdateOptVecParameters()
+        # Calculate error.
+        error = 0.
+        for key,sample in self.experiment.samples.items():
+            # Simulate with 0.1 second time steps.
+            sim_result = sample.model.handle.simulate(0,300,2999, ['time', 'bound'])
+            # Convert concentration to fluorescence
+            ci = sample.model.GetValue("ci")
+            sim_result = {round(x[0],1): ci*x[1] for x in sim_result}
+            # Collate time, observed data, and simulated data.
+            data = []
+            for index in range(len(sample.measurement)):
+                time_point = sample.measurement[index][0]
+                if 0 <= time_point < 300:
+                    log_obs_point = math.log10(sample.measurement[index][1]) if sample.measurement[index][1] > 0 else 0
+                    # Attempt to get the closest simulation point, then log transform that value.
+                    sim_point = sim_result.get(time_point)
+                    if sim_point is None and time_point > 0:
+                        count = 1
+                        while sim_point is None:
+                            sim_point = sim_result.get(time_point - 0.1 * count)
+                            count += 1
+                    log_sim_point = math.log10(sim_point) if sim_point > 0 else 0
+                    data.append((time_point, log_obs_point, log_sim_point))
+            data = np.asarray(data)
+            error += sum(abs(data[:,1] - data[:,2])**2)
+        return error
+
+    def SortIslandsByFitness(self):
+        for island in self.Islands:
+            island = sorted(island, key=lambda o: o.Fitness)
+        return
+
+class Member(object):
+    def __init__(self, vector, fitness):
+        self.Vector = vector
+        self.Fitness = fitness
+        return

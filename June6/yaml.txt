@@ -56,7 +56,7 @@ Measurement3:
       dilution_rate: 0.325
       columns: 1,2,3
       dye_external: 5uM
-    J23111a:
+    J23111:
       dilution_rate: 0.321
       columns: 4,5,6
       dye_external: 5uM
@@ -96,15 +96,15 @@ Measurement5:
       dilution_rate: 0.354
       dye_external: 5uM
       columns: 10,11
-    J23101:
+    J23101.1:
       dilution_rate: 0.253
       columns: 1,2,3
       dye_external: 5uM
-    J23111a:
+    J23111:
       dilution_rate: 0.321
       columns: 4,5,6
       dye_external: 5uM
-    J23101:
+    J23101.2:
       dilution_rate: 0.356
       columns: 7,8,9
       dye_external: 5uM
@@ -118,7 +118,7 @@ Measurement6:
       dilution_rate: 0.354
       dye_external: 3uM
       columns: 10,11
-    J23101:
+    J23101.1:
       dilution_rate: 0.253
       columns: 1,2,3
       dye_external: 3uM
@@ -126,7 +126,7 @@ Measurement6:
       dilution_rate: 0.321
       columns: 4,5,6
       dye_external: 3uM
-    J23101:
+    J23101.2:
       dilution_rate: 0.356
       columns: 7,8,9
       dye_external: 3uM
@@ -140,7 +140,7 @@ Measurement7:
       dilution_rate: 0.354
       dye_external: 2uM
       columns: 10,11
-    J23101:
+    J23101.1:
       dilution_rate: 0.253
       columns: 1,2,3
       dye_external: 2uM
@@ -148,7 +148,7 @@ Measurement7:
       dilution_rate: 0.321
       columns: 4,5,6
       dye_external: 2uM
-    J23101:
+    J23101.2:
       dilution_rate: 0.356
       columns: 7,8,9
       dye_external: 2uM
