@@ -1,9 +1,12 @@
 __author__ = 'Wilbert'
 
 import math
+import matplotlib.pyplot as mplot
 import numpy as np
 import random
 import re
+import scipy.stats
+from scipy.special import expit
 import tellurium as te
 import yaml
 
@@ -30,6 +33,10 @@ class Model(object):
 
     def GetBoundarySpecies(self):
         return {x: self.handle.__getattr__(x) for x in self.handle.getBoundarySpeciesIds()}
+
+    def GetAll(self):
+        list_of_all = self.handle.getGlobalParameterIds() + self.handle.getFloatingSpeciesIds() + self.handle.getBoundarySpeciesIds()
+        return {x: self.handle.__getattr__(x) for x in list_of_all}
 
     def GetValue(self, key):
         try:
@@ -82,11 +89,55 @@ class Sample(object):
         self.model = model
         self.measurement = measurement
 
+    def Plot(self, new_figure=False, color=None):
+        if new_figure:
+            mplot.figure()
+        c = self.PlotObserved(color=color)
+        self.PlotSimulation(color=c)
+        return
+
+    def PlotObserved(self, new_figure=False, color=None):
+        if new_figure:
+            mplot.figure()
+        if color is None:
+            line = mplot.plot(self.measurement[:,0], self.measurement[:,1], 'o')
+            color = line[0].get_color()
+        else:
+            line = mplot.plot(self.measurement[:,0], self.measurement[:,1], 'o', color)
+        mplot.show()
+        return color
+
+    def PlotSimulation(self, new_figure=False, color=None):
+        if new_figure:
+            mplot.figure()
+        ci = self.model.GetValue("ci")
+
+        #TODO Hard-coded for now. Think of a better solution for handling species concentrations.
+        self.model.SetValue('rna', 0.0)
+        self.model.SetValue('bound', 0.0)
+        self.model.SetValue('dye', 0.0)
+        self.model.SetValue('dyeExt',0.0)
+        self.model.handle.steadyState()
+        self.model.SetValue('dyeExt', 5.0)
+        # !End to do
+        self.model.handle.selections = ['time', 'bound']
+        MAX_TIME = 180
+        simulation = [x for x in self.model.handle.simulate(0,MAX_TIME,MAX_TIME*10-1, stiff=True)]
+        result = np.asarray([(x[0],ci*x[1]) for x in simulation])
+        if color is None:
+            line = mplot.plot(result[:,0], result[:,1])
+            color = line[0].get_color()
+        else:
+            mplot.plot(result[:,0], result[:,1], color=color)
+        mplot.show()
+        return color
+
 
 class Experiment(object):
     def __init__(self):
         self.samples = {}
         self.parameter_map = {}
+        self.relations = None
         self.optimization_vector = None
         return
 
@@ -191,20 +242,7 @@ class Experiment(object):
             # Expand parameter selection based on query terms.
             for row in range(len(linked_parameters)):
                 for col in range(len(linked_parameters[row])):
-                    # Wild card query
-                    if '*.' in linked_parameters[row][col]:
-                        suffix = linked_parameters[row][col].split('*.')[-1]
-                        for sample_name in self.samples:
-                            linked_parameters[row].append('{0}.{1}'.format(self.samples[sample_name].id, suffix))
-                        del linked_parameters[row][0]
-                    # Attribute query
-                    if linked_parameters[row][col][0] == '!':
-                        attr_info, suffix = linked_parameters[row][col].split('.')
-                        attr_name, attr_value = attr_info[1:].split('=')
-                        for sample_name in self.samples:
-                            if self.samples[sample_name].metadata[attr_name] == attr_value:
-                                linked_parameters[row].append('{0}.{1}'.format(self.samples[sample_name].id, suffix))
-                        del linked_parameters[row][0]
+                    linked_parameters[row] = self.FindValuesByMeta(linked_parameters[row][col])
 
         # Update indices of linked parameters and track deleted indices.
         removedIndices = []
@@ -221,6 +259,55 @@ class Experiment(object):
             self.parameter_map[key] = self.parameter_map[key] - len([x for x in removedIndices if self.parameter_map[key] > x])
         return
 
+
+    def FindValuesByMeta(self, query):
+        assert query[0] in ['!', '*'], "Not a proper query. {0}".format(query)
+        results = []
+
+        meta_query, parameter_handle = query.split('.')
+        if query[0] == '*':
+            #parameter_handle = query.split('.')
+            for sample_name in self.samples:
+                results.append("{0}.{1}".format(self.samples[sample_name].id, parameter_handle))
+            pass
+        elif query[0] == '!':
+            #meta_query, parameter_handle = query.split('.')
+            meta_name, meta_value = meta_query[1:].split(':')
+            for sample_name in self.samples:
+                if self.samples[sample_name].metadata[meta_name] == meta_value:
+                    results.append('{0}.{1}'.format(self.samples[sample_name].id, parameter_handle))
+        return results
+
+    def FindIndicesByValue(self, query):
+        result = []
+        for key in self.FindValuesByMeta(query):
+            result.append(self.parameter_map.get(key))
+        return result
+
+    def BuildRelations(self, text):
+        self.relations = []
+        for line in text:
+            target, value, operator = line.split(' ')[:3]
+            indices = self.FindIndicesByValue(target)
+            if len(set(indices)) > 1:
+                print("Warning: Query points to multiple indices! {0}".format(x))
+            target = int(indices[0])
+            if operator in ['*', '+', '-', '/']:
+                reference = line.split(' ')[3]
+                value = float(value)
+                indices = self.FindIndicesByValue(reference)
+                if len(set(indices)) > 1:
+                    print("Warning: Query points to multiple indices! {0}".format(x))
+                reference = int(indices[0])
+                self.relations.append((target, operator, value, reference))
+            elif operator in ['~']:
+                value = tuple([float(x) for x in value.split(',')])
+                self.relations.append((target, operator, value))
+            elif operator in ['>', '<']:
+                value = float(value)
+                self.relations.append((target, operator, value))
+        return
+
     def GetNumberUniqueParametersInMap(self):
         return len(set(self.parameter_map.values()))
 
@@ -230,20 +317,39 @@ class DEOpt(object):
         self.Islands = []
         self.experiment = experiment
         vector_length = experiment.GetNumberUniqueParametersInMap()
-        self.min_max = min_max if min_max is not None else np.array([[0., 5.e1] for x in range(vector_length)])
+        self.min_max = min_max if min_max is not None else np.array([[0., 1.e2] for x in range(vector_length)])
+        self.rules = None
         return
 
-    def CreateIsland(self, population_size):
+    def CreateIsland(self, population_size, min_max_rules=None):
         island = []
         for i in range(population_size):
-            island.append(self.CreateRandomMember())
+            island.append(self.CreateRandomMember(min_max_rules))
         self.Islands.append(island)
         return
 
-    def CreateRandomMember(self):
+    def LogRandom(self, lower, upper):
+        return 10 ** random.uniform(lower, upper)
+
+
+    def CreateRandomMember(self, min_max_rules=None):
         vector_length = self.experiment.GetNumberUniqueParametersInMap()
-        vector = [round(random.uniform(*self.min_max[x,:]),6) for x in range(vector_length)]
-        fitness = self.GetFitness(vector)
+        success = False
+
+        while not success:
+            try:
+                vector = [random.uniform(0,1e3) for x in range(vector_length)]
+
+                if min_max_rules is not None:
+                    for entry in min_max_rules:
+                        opt_vec_indices = set(self.experiment.FindIndicesByValue(entry))
+                        for opt_vec_index in opt_vec_indices:
+                            vector[opt_vec_index] = self.LogRandom(*min_max_rules[entry])
+
+                fitness = self.GetFitness(vector)
+                success = True
+            except:
+                pass
         print("RandomMember\tFitness: {0}\tVector: {1}".format(fitness, vector))
         return Member(vector, fitness)
 
@@ -263,18 +369,65 @@ class DEOpt(object):
                     new_vector.append(o[i]/2.)
             else:
                 new_vector.append(o[i])
-        new_fitness = self.GetFitness(new_vector)
-        return Member(new_vector, new_fitness)
+        try:
+            new_fitness = self.GetFitness(new_vector)
+            return Member(new_vector, new_fitness)
+        except:
+            return original
+
+    def EnforceRelations(self, vector):
+        for relation in self.experiment.relations:
+            target_index = relation[0]
+            operation = relation[1]
+            if operation == '*':
+                value, reference_index = relation[2:]
+                vector[target_index] = vector[reference_index] * value
+            elif operation == '/':
+                value, reference_index = relation[2:]
+                vector[target_index] = vector[reference_index] / value
+            elif operation == '+':
+                value, reference_index = relation[2:]
+                vector[target_index] = vector[reference_index] + value
+            elif operation == '-':
+                value, reference_index = relation[2:]
+                vector[target_index] = vector[reference_index] - value
+            elif operation == '~':
+                min_val, max_val = relation[2]
+                if vector[target_index] < min_val:
+                    vector[target_index] = min_val
+                elif vector[target_index] > max_val:
+                    vector[target_index] = max_val
+            elif operation == '<':
+                value = relation[2]
+                if vector[target_index] > value:
+                    vector[target_index] = value
+            elif operation == '>':
+                value = relation[2]
+                if vector[target_index] < value:
+                    vector[target_index] = value
+        return
 
     def GetFitness(self, vector):
         # Update model based on vector.
+        self.EnforceRelations(vector)
         self.experiment.optimization_vector = vector
         self.experiment.UpdateOptVecParameters()
         # Calculate error.
         error = 0.
         for key,sample in self.experiment.samples.items():
+            #TODO Clean up code that "smartly" assigns species concentrations.
+            MAX_TIME = 300
+
+            # Simulate steady-state in absence of dye
+            sample.model.SetValue('rna', 0.0)
+            sample.model.SetValue('bound', 0.0)
+            sample.model.SetValue('dye', 0.0)
+            sample.model.SetValue('dyeExt', 0.0)
+            sample.model.handle.steadyState()
             # Simulate with 0.1 second time steps.
-            sim_result = sample.model.handle.simulate(0,300,2999, ['time', 'bound'])
+            sample.model.SetValue('dyeExt', 5.0)
+            sample.model.handle.selections = ['time', 'bound']
+            sim_result = sample.model.handle.simulate(0,MAX_TIME, MAX_TIME*10-1, stiff=True)
             # Convert concentration to fluorescence
             ci = sample.model.GetValue("ci")
             sim_result = {round(x[0],1): ci*x[1] for x in sim_result}
@@ -282,8 +435,9 @@ class DEOpt(object):
             data = []
             for index in range(len(sample.measurement)):
                 time_point = sample.measurement[index][0]
-                if 0 <= time_point < 300:
-                    log_obs_point = math.log10(sample.measurement[index][1]) if sample.measurement[index][1] > 0 else 0
+                if 0 <= time_point < MAX_TIME:
+                    #log_obs_point = math.log(sample.measurement[index][1]) if sample.measurement[index][1] > 0 else 0
+                    obs_point = sample.measurement[index][1]
                     # Attempt to get the closest simulation point, then log transform that value.
                     sim_point = sim_result.get(time_point)
                     if sim_point is None and time_point > 0:
@@ -291,16 +445,54 @@ class DEOpt(object):
                         while sim_point is None:
                             sim_point = sim_result.get(time_point - 0.1 * count)
                             count += 1
-                    log_sim_point = math.log10(sim_point) if sim_point > 0 else 0
-                    data.append((time_point, log_obs_point, log_sim_point))
+                    #log_sim_point = math.log(sim_point) if sim_point > 0 else 0
+                    data.append((time_point, obs_point, sim_point))
             data = np.asarray(data)
-            error += sum(abs(data[:,1] - data[:,2])**2)
+            diff_squared = abs(data[:,1] - data[:,2])**2
+
+            #TODO Identify the best weighting scheme.
+            # SCHEME 1:  NO WEIGHTING
+            weights = np.ones(data.shape)
+            # SCHEME 2: WEIGHTING WITH SIGMOID
+            weight_lower_threshold = 0.1
+            steepness=15.
+            hshift=10.
+            weights = expit(-data[:,0]/steepness + hshift)
+            weights[weights<weight_lower_threshold] = weight_lower_threshold
+            # SCHEME 3: WEIGHTING WITH EXPONENTIAL
+            #pdf_scalar = 4./300.
+            #weights = scipy.stats.expon.pdf(pdf_scalar*data[:,0])
+
+            # Sum error
+            error += sum(diff_squared * weights)
         return error
 
     def SortIslandsByFitness(self):
         for island in self.Islands:
             island = sorted(island, key=lambda o: o.Fitness)
         return
+
+    def PlotResults(self, member):
+        self.experiment.optimization_vector = member.Vector
+        self.experiment.UpdateOptVecParameters()
+        mplot.figure()
+        for key,sample in self.experiment.samples.items():
+            color = sample.PlotObserved()
+            sample.PlotSimulation(color=color)
+        return
+
+    def GenerateReport(self):
+        report = dict()
+        # Save Parameter Map
+        report.update({"parameter_map": self.experiment.parameter_map})
+        # Save Members
+        report.update({"islands": []})
+        for island_index in range(len(self.Islands)):
+            population = []
+            for member in self.Islands[island_index]:
+                population.append((member.Fitness, member.Vector))
+            report["islands"].append(population)
+        return report
 
 class Member(object):
     def __init__(self, vector, fitness):
