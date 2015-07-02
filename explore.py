@@ -109,8 +109,9 @@ expt.CreateParameterMap(linked_parameters=linkedParamList)
 expt.BuildRelations(relations)
 
 
-"""
+
 # Manually fitting Sample4 (J23111)
+mplot.figure()
 expt.samples['Sample4'].model.SetValue('syn', 4.8e-3)
 expt.samples['Sample4'].PlotObserved()
 
@@ -119,6 +120,9 @@ kt = expt.samples['Sample4'].model.GetValue('kt')
 for x in [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20]:
     expt.samples['Sample4'].model.SetValue('kt', (x*kt))
     expt.samples['Sample4'].PlotSimulation()
+mplot.xlabel('Time (seconds)')
+mplot.ylabel('Aptamer Fluorescence (RFU)')
+mplot.title('Simulated Fluorescence kinetics of aptamer-dye with varying k_T')
 expt.samples['Sample4'].model.SetValue('kt', kt)
 
 #Sweep kf
@@ -129,6 +133,9 @@ for x in [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20]:
     expt.samples['Sample4'].model.SetValue('kf', (x*kf))
     expt.samples['Sample4'].PlotSimulation()
     print('Ration kf/kt = {0}'.format((x*kf/kt)))
+mplot.xlabel('Time (seconds)')
+mplot.ylabel('Aptamer Fluorescence (RFU)')
+mplot.title('Simulated Fluorescence kinetics of aptamer-dye with varying k_F')
 expt.samples['Sample4'].model.SetValue('kf', kf)
-"""
+
 

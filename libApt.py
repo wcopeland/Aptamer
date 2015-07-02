@@ -3,6 +3,7 @@ __author__ = 'Wilbert'
 import math
 import matplotlib.pyplot as mplot
 import numpy as np
+import pickle
 import random
 import re
 import scipy.stats
@@ -119,9 +120,8 @@ class Sample(object):
         self.model.SetValue('dyeExt',0.0)
         self.model.handle.steadyState()
         self.model.SetValue('dyeExt', 5.0)
-        # !End to do
         self.model.handle.selections = ['time', 'bound']
-        MAX_TIME = 180
+        MAX_TIME = 300
         simulation = [x for x in self.model.handle.simulate(0,MAX_TIME,MAX_TIME*10-1, stiff=True)]
         result = np.asarray([(x[0],ci*x[1]) for x in simulation])
         if color is None:
@@ -131,6 +131,18 @@ class Sample(object):
             mplot.plot(result[:,0], result[:,1], color=color)
         mplot.show()
         return color
+
+    def GetRelaxationTimeConstant(self):
+        data = self.measurement
+        data = data[data[:,0] >= 0]
+        data = data[data[:,0] < 300]
+        fl_max = np.amax(data[:,1])
+        data[:,1] = fl_max - data[:,1]
+        data = data[data[:,1] > 0]
+        t = data[:,0]
+        log_fl = np.log10(data[:,1])
+        mplot.plot(t, log_fl, 'o')
+        return
 
 
 class Experiment(object):
@@ -259,7 +271,6 @@ class Experiment(object):
             self.parameter_map[key] = self.parameter_map[key] - len([x for x in removedIndices if self.parameter_map[key] > x])
         return
 
-
     def FindValuesByMeta(self, query):
         assert query[0] in ['!', '*'], "Not a proper query. {0}".format(query)
         results = []
@@ -294,14 +305,18 @@ class Experiment(object):
             target = int(indices[0])
             if operator in ['*', '+', '-', '/']:
                 reference = line.split(' ')[3]
-                value = float(value)
+                match = re.match("(\d+\.\d+)-(\d+\.\d+)", value)
+                if match is None:
+                    value = float(value)
+                else:
+                    value = (float(match.group(1)), float(match.group(2)))
                 indices = self.FindIndicesByValue(reference)
                 if len(set(indices)) > 1:
                     print("Warning: Query points to multiple indices! {0}".format(x))
                 reference = int(indices[0])
                 self.relations.append((target, operator, value, reference))
             elif operator in ['~']:
-                value = tuple([float(x) for x in value.split(',')])
+                value = tuple([float(x) for x in value.split('-')])
                 self.relations.append((target, operator, value))
             elif operator in ['>', '<']:
                 value = float(value)
@@ -317,14 +332,26 @@ class DEOpt(object):
         self.Islands = []
         self.experiment = experiment
         vector_length = experiment.GetNumberUniqueParametersInMap()
-        self.min_max = min_max if min_max is not None else np.array([[0., 1.e2] for x in range(vector_length)])
+        self.min_max = min_max
         self.rules = None
         return
 
-    def CreateIsland(self, population_size, min_max_rules=None):
+    def Run(self, maximum_generations=100, population_size=12, number_islands=1, cpu_count=1, report_path="report.txt"):
+        # Initially populate islands with random members.
+        population_size = min([population_size, 4])
+        self.Islands = []
+        for i in range(number_islands):
+            self.Islands.append(self.CreateIsland(population_size))
+        # DE LOOP:
+        generation_count = 0
+        while generation_count < maximum_generations:
+            generation_count += 1
+        return
+
+    def CreateIsland(self, population_size):
         island = []
         for i in range(population_size):
-            island.append(self.CreateRandomMember(min_max_rules))
+            island.append(self.CreateRandomMember())
         self.Islands.append(island)
         return
 
@@ -332,46 +359,51 @@ class DEOpt(object):
         return 10 ** random.uniform(lower, upper)
 
 
-    def CreateRandomMember(self, min_max_rules=None):
+    def CreateRandomMember(self):
         vector_length = self.experiment.GetNumberUniqueParametersInMap()
         success = False
-
         while not success:
             try:
                 vector = [random.uniform(0,1e3) for x in range(vector_length)]
-
-                if min_max_rules is not None:
-                    for entry in min_max_rules:
+                # Constrain vector values according to min-max and relations.
+                if self.min_max is not None:
+                    for entry in self.min_max:
                         opt_vec_indices = set(self.experiment.FindIndicesByValue(entry))
                         for opt_vec_index in opt_vec_indices:
-                            vector[opt_vec_index] = self.LogRandom(*min_max_rules[entry])
-
+                            vector[opt_vec_index] = self.LogRandom(*self.min_max[entry])
+                vector = self.EnforceRelations(vector)
                 fitness = self.GetFitness(vector)
                 success = True
+                print("Created a random member.\tFitness: {0}\tVector: {1}".format(fitness, vector))
             except:
                 pass
-        print("RandomMember\tFitness: {0}\tVector: {1}".format(fitness, vector))
         return Member(vector, fitness)
 
-    def CreateTrialMember(self, original, samples, CR=0.6, F=0.8):
+    def ChallengeMember(self, original, samples, CR=0.6, F=0.8):
         o = original.Vector
         a = samples[0].Vector
         b = samples[1].Vector
         c = samples[2].Vector
-
-        new_vector = []
+        # Create new vector
+        vector = []
         for i in range(len(o)):
             if random.random() <= CR:
-                v = round(a[i] + F * (b[i] - c[i]), 7)
-                if v>0:
-                    new_vector.append(v)
+                v = a[i] + F * (b[i]-c[i])
+                if v > 0:
+                    vector.append(v)
+                # Graceful way to handle negative parameters is to half the previous value.
                 else:
-                    new_vector.append(o[i]/2.)
+                    vector.append(o[i]/2.)
             else:
-                new_vector.append(o[i])
+                vector.append(o[i])
+        # Evaluate the fitness of the new vector and return the best candidate.
         try:
-            new_fitness = self.GetFitness(new_vector)
-            return Member(new_vector, new_fitness)
+            vector = self.EnforceRelations(vector)
+            fitness = self.GetFitness(vector)
+            if fitness < original.Fitness:
+                return Member(vector, fitness)
+            else:
+                return original
         except:
             return original
 
@@ -381,16 +413,34 @@ class DEOpt(object):
             operation = relation[1]
             if operation == '*':
                 value, reference_index = relation[2:]
-                vector[target_index] = vector[reference_index] * value
+                # If fixed value.
+                if type(value) is float:
+                    vector[target_index] = vector[reference_index] * value
+                # If value is outside of allowable range of a reference value.
+                elif type(value) is tuple:
+                    if not value[0] < vector[target_index] / vector[reference_index] < value[1]:
+                        vector[target_index] = vector[reference_index] * random.uniform(value[0], value[1])
             elif operation == '/':
                 value, reference_index = relation[2:]
-                vector[target_index] = vector[reference_index] / value
+                if type(value) is float:
+                    vector[target_index] = vector[reference_index] / value
+                elif type(value) is tuple:
+                    if not value[0] < vector[reference_index] / vector[target_index] < value[1]:
+                        vector[target_index] = vector[reference_index] / random.uniform(value[0], value[1])
             elif operation == '+':
                 value, reference_index = relation[2:]
-                vector[target_index] = vector[reference_index] + value
+                if type(value) is float:
+                    vector[target_index] = vector[reference_index] + value
+                elif type(value) is tuple:
+                    if not value[0] < vector[target_index] - vector[reference_index] < value[1]:
+                        vector[target_index] = vector[reference_index] + random.uniform(value[0], value[1])
             elif operation == '-':
                 value, reference_index = relation[2:]
-                vector[target_index] = vector[reference_index] - value
+                if type(value) is float:
+                    vector[target_index] = vector[reference_index] - value
+                elif type(value) is tuple:
+                    if not value[0] < vector[target_index] - vector[reference_index] < value[1]:
+                        vector[target_index] = vector[reference_index] - random.uniform(value[0], value[1])
             elif operation == '~':
                 min_val, max_val = relation[2]
                 if vector[target_index] < min_val:
@@ -405,11 +455,10 @@ class DEOpt(object):
                 value = relation[2]
                 if vector[target_index] < value:
                     vector[target_index] = value
-        return
+        return vector
 
     def GetFitness(self, vector):
         # Update model based on vector.
-        self.EnforceRelations(vector)
         self.experiment.optimization_vector = vector
         self.experiment.UpdateOptVecParameters()
         # Calculate error.
@@ -436,8 +485,8 @@ class DEOpt(object):
             for index in range(len(sample.measurement)):
                 time_point = sample.measurement[index][0]
                 if 0 <= time_point < MAX_TIME:
-                    #log_obs_point = math.log(sample.measurement[index][1]) if sample.measurement[index][1] > 0 else 0
-                    obs_point = sample.measurement[index][1]
+                    log_obs_point = math.log(sample.measurement[index][1]) if sample.measurement[index][1] > 0 else 0
+                    #obs_point = sample.measurement[index][1]
                     # Attempt to get the closest simulation point, then log transform that value.
                     sim_point = sim_result.get(time_point)
                     if sim_point is None and time_point > 0:
@@ -445,8 +494,8 @@ class DEOpt(object):
                         while sim_point is None:
                             sim_point = sim_result.get(time_point - 0.1 * count)
                             count += 1
-                    #log_sim_point = math.log(sim_point) if sim_point > 0 else 0
-                    data.append((time_point, obs_point, sim_point))
+                    log_sim_point = math.log(sim_point) if sim_point > 0 else 0
+                    data.append((time_point, log_obs_point, log_sim_point))
             data = np.asarray(data)
             diff_squared = abs(data[:,1] - data[:,2])**2
 
@@ -468,8 +517,8 @@ class DEOpt(object):
         return error
 
     def SortIslandsByFitness(self):
-        for island in self.Islands:
-            island = sorted(island, key=lambda o: o.Fitness)
+        for i in range(len(self.Islands)):
+            self.Islands[i] = sorted(self.Islands[i], key=lambda o: o.Fitness)
         return
 
     def PlotResults(self, member):
@@ -481,7 +530,7 @@ class DEOpt(object):
             sample.PlotSimulation(color=color)
         return
 
-    def GenerateReport(self):
+    def SaveReport(self, filename):
         report = dict()
         # Save Parameter Map
         report.update({"parameter_map": self.experiment.parameter_map})
@@ -492,7 +541,24 @@ class DEOpt(object):
             for member in self.Islands[island_index]:
                 population.append((member.Fitness, member.Vector))
             report["islands"].append(population)
+        outfile = open(filename, 'w')
+        pickle.dump(report, outfile)
+        outfile.close()
         return report
+
+    def LoadReport(self, filename):
+        infile = open(filename, 'r')
+        report = pickle.load(infile)
+        infile.close()
+
+        self.experiment.parameter_map = report["parameter_map"]
+        self.Islands = []
+        for island_index in range(len(report["islands"])):
+            population = []
+            for entry in report["islands"][island_index]:
+                population.append(Member(entry[1], entry[0]))
+            self.Islands.append(population)
+        return
 
 class Member(object):
     def __init__(self, vector, fitness):
