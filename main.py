@@ -68,6 +68,7 @@ random_member_min_max = { '*.kf':(-9, 1),
 expt.CreateParameterMap(linked_parameters=linkedParamList)
 expt.BuildRelations(relations)
 
+"""
 # Differential evolution
 GENERATION_COUNT = 0
 MAX_GENERATIONS = 2000
@@ -123,6 +124,7 @@ print('Optimization time: {0}'.format(datetime.now()-clock))
 #report = de.SaveReport("jun18_report_2.txt")
 #de.LoadReport("jun18_report_1.txt")
 de.PlotResults(de.Islands[0][0])
+"""
 
 
 
